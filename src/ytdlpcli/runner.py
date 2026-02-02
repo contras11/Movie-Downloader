@@ -1,3 +1,10 @@
+"""
+ytdlpcli.runner
+~~~~~~~~~~~~~~~
+
+yt-dlpをsubprocessで起動し、進捗を取得します。
+"""
+
 from __future__ import annotations
 
 import os
@@ -6,6 +13,8 @@ import subprocess
 import threading
 from dataclasses import dataclass
 from typing import Optional
+
+from .exceptions import YtdlpNotFoundError
 
 _PROGRESS_RE = re.compile(
     r"^\[ytdlpcli\]\s+downloaded=(?P<downloaded>\S+)\s+total=(?P<total>\S+)\s+eta=(?P<eta>\S+)\s+speed=(?P<speed>\S+)\s*$"
@@ -81,13 +90,16 @@ class YtDlpJob:
             self.url,
         ]
 
-        self._proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-        )
+        try:
+            self._proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+        except FileNotFoundError as e:
+            raise YtdlpNotFoundError() from e
 
     def poll_progress(self) -> ProgressSnapshot:
         with self._lock:
@@ -108,8 +120,12 @@ class YtDlpJob:
             raise RuntimeError("Process not started")
 
         # stderrを読みながら進捗更新
+        # iter()を使って改行ごとに読み込み（ブロッキング対策）
         tail_lines = []
-        for line in self._proc.stderr:
+        for line in iter(self._proc.stderr.readline, ''):
+            if not line:
+                break
+
             line = line.strip()
             if not line:
                 continue

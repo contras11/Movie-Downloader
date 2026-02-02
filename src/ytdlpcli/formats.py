@@ -5,6 +5,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import List, Optional
 
+from .exceptions import YtdlpNotFoundError, FormatFetchError
+
 
 @dataclass(frozen=True)
 class VideoFormat:
@@ -35,9 +37,13 @@ class VideoFormat:
 def fetch_info_json(url: str) -> dict:
     # -J はJSON、--no-playlistで単体、--no-warningsでノイズ低減
     cmd = ["yt-dlp", "-J", "--no-playlist", "--no-warnings", url]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError as e:
+        raise YtdlpNotFoundError() from e
+
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "yt-dlp -J failed")
+        raise FormatFetchError(result.stderr.strip() or "yt-dlp -J failed")
     return json.loads(result.stdout)
 
 
