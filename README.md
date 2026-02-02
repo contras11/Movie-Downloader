@@ -15,6 +15,8 @@ macOS向けの対話型 yt-dlp ダウンローダーです。Richで複数ジョ
 
 ```bash
 brew install yt-dlp ffmpeg
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 
