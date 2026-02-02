@@ -38,11 +38,11 @@ class AppConfig:
     continue_on_error: bool = True
 
 
-def _coerce_config(d: dict[str, Any]) -> AppConfig:
+def _coerce_config(data: dict[str, Any]) -> AppConfig:
     cfg = AppConfig()
-    for k, v in d.items():
-        if hasattr(cfg, k):
-            setattr(cfg, k, v)
+    for key, value in data.items():
+        if hasattr(cfg, key):
+            setattr(cfg, key, value)
     # 値の正規化
     cfg.download_dir = os.path.expanduser(cfg.download_dir)
     return cfg
@@ -53,13 +53,13 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> AppConfig:
         cfg = AppConfig()
         save_config(cfg, path)
         return cfg
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    with open(path, "r", encoding="utf-8") as file_handle:
+        data = json.load(file_handle)
     return _coerce_config(data)
 
 
 def save_config(cfg: AppConfig, path: str = DEFAULT_CONFIG_PATH) -> None:
     # 親ディレクトリがあれば作る
     os.makedirs(os.path.dirname(path), exist_ok=True) if os.path.dirname(path) else None
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(asdict(cfg), f, ensure_ascii=False, indent=2)
+    with open(path, "w", encoding="utf-8") as file_handle:
+        json.dump(asdict(cfg), file_handle, ensure_ascii=False, indent=2)

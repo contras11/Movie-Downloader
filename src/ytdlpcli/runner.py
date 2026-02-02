@@ -8,8 +8,16 @@ from dataclasses import dataclass
 from typing import Optional
 
 _PROGRESS_RE = re.compile(
-    r"^\[ytdlpcli\]\s+downloaded=(?P<downloaded>\d+)\s+total=(?P<total>\d+)\s+eta=(?P<eta>-?\d+)\s+speed=(?P<speed>-?\d+)\s*$"
+    r"^\[ytdlpcli\]\s+downloaded=(?P<downloaded>\S+)\s+total=(?P<total>\S+)\s+eta=(?P<eta>\S+)\s+speed=(?P<speed>\S+)\s*$"
 )
+
+
+def _parse_progress_value(value: str) -> int:
+    # yt-dlpの進捗はNAが混じるため、安全に数値化
+    try:
+        return int(float(value))
+    except Exception:
+        return -1
 
 
 @dataclass
@@ -107,13 +115,13 @@ class YtDlpJob:
                 continue
 
             # 進捗行
-            m = _PROGRESS_RE.match(line)
-            if m:
+            match = _PROGRESS_RE.match(line)
+            if match:
                 with self._lock:
-                    self._progress.downloaded = int(m.group("downloaded"))
-                    self._progress.total = int(m.group("total"))
-                    self._progress.eta = int(m.group("eta"))
-                    self._progress.speed = int(m.group("speed"))
+                    self._progress.downloaded = _parse_progress_value(match.group("downloaded"))
+                    self._progress.total = _parse_progress_value(match.group("total"))
+                    self._progress.eta = _parse_progress_value(match.group("eta"))
+                    self._progress.speed = _parse_progress_value(match.group("speed"))
                 continue
 
             # 結合後の最終ファイル名推定（ログから取れる場合がある）
@@ -121,9 +129,9 @@ class YtDlpJob:
             if 'Merging formats into "' in line:
                 # 雑に抽出（引用符）
                 try:
-                    s = line.split('Merging formats into "', 1)[1]
-                    out = s.rsplit('"', 1)[0]
-                    self.output_path = out
+                    merged_part = line.split('Merging formats into "', 1)[1]
+                    output_path = merged_part.rsplit('"', 1)[0]
+                    self.output_path = output_path
                 except Exception:
                     pass
 
