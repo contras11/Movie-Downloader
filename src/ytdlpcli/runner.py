@@ -62,10 +62,10 @@ class YtDlpJob:
         os.makedirs(self.download_dir, exist_ok=True)
 
         # 進捗を機械可読な形式で出す（行単位）
-        # downloaded/total/eta/speed は数値に固定する
+        # total_bytes（実際の値）を優先、なければtotal_bytes_estimate（推定値）を使用
         progress_template = (
             "[ytdlpcli] downloaded=%(progress.downloaded_bytes)s "
-            "total=%(progress.total_bytes_estimate)s "
+            "total=%(progress.total_bytes,progress.total_bytes_estimate)s "
             "eta=%(progress.eta)s "
             "speed=%(progress.speed)s"
         )
