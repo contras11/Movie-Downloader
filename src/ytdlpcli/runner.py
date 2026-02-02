@@ -93,8 +93,8 @@ class YtDlpJob:
         try:
             self._proc = subprocess.Popen(
                 cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
             )
@@ -116,16 +116,12 @@ class YtDlpJob:
                 self._proc.terminate()
 
     def wait(self) -> int:
-        if not self._proc or not self._proc.stderr:
+        if not self._proc or not self._proc.stdout:
             raise RuntimeError("Process not started")
 
-        # stderrを読みながら進捗更新
-        # iter()を使って改行ごとに読み込み（ブロッキング対策）
+        # stdoutを読みながら進捗更新（stderrはSTDOUTにリダイレクト済み）
         tail_lines = []
-        for line in iter(self._proc.stderr.readline, ''):
-            if not line:
-                break
-
+        for line in self._proc.stdout:
             line = line.strip()
             if not line:
                 continue
