@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ytdlpcli"
+version = "0.1.0"
+description = "Interactive yt-dlp downloader for macOS with Rich progress, format selection, config, parallel downloads."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "rich>=13.7.0",
+]
+
+[project.scripts]
+ytdlpcli = "ytdlpcli.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
