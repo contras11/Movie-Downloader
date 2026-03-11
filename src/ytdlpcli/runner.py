@@ -86,7 +86,8 @@ class YtDlpJob:
             self.fmt,
         ]
         if self.audio_only:
-            cmd += ["-x", "--audio-format", self.audio_format, "--audio-quality", "0"]
+            cmd += ["-x", "--audio-format", self.audio_format, "--audio-quality", "0",
+                    "--embed-thumbnail"]
         else:
             cmd += ["--merge-output-format", self.merge_output_format]
         cmd += [
