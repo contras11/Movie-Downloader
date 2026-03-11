@@ -86,6 +86,8 @@ def _cmd_run(args) -> int:
         cfg.continue_on_error = args.continue_on_error
     if args.merge_output_format is not None:
         cfg.merge_output_format = args.merge_output_format
+    if args.audio_format is not None:
+        cfg.audio_format = args.audio_format
 
     urls = _read_urls_from_args(args)
     if not urls:
@@ -154,8 +156,8 @@ def _cmd_config(args) -> int:
         cfg.max_workers = args.set_workers
         changed = True
     if args.set_mode is not None:
-        if args.set_mode not in ("auto", "mp4", "ask"):
-            console.print("modeは auto/mp4/ask のいずれかです。")
+        if args.set_mode not in ("auto", "mp4", "ask", "audio"):
+            console.print("modeは auto/mp4/ask/audio のいずれかです。")
             return 2
         cfg.format_mode = args.set_mode
         changed = True
@@ -173,6 +175,12 @@ def _cmd_config(args) -> int:
         changed = True
     if args.set_merge_output_format is not None:
         cfg.merge_output_format = args.set_merge_output_format
+        changed = True
+    if args.set_audio_format is not None:
+        if args.set_audio_format not in ("mp3", "m4a", "opus", "flac", "wav"):
+            console.print("audio_formatは mp3/m4a/opus/flac/wav のいずれかです。")
+            return 2
+        cfg.audio_format = args.set_audio_format
         changed = True
 
     if changed:
@@ -201,7 +209,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="スリープ防止（設定を上書き）",
     )
-    run_parser.add_argument("--mode", type=str, choices=["auto", "mp4", "ask"], default=None, help="auto/mp4/ask")
+    run_parser.add_argument("--mode", type=str, choices=["auto", "mp4", "ask", "audio"], default=None, help="auto/mp4/ask/audio")
+    run_parser.add_argument("--audio-format", type=str, choices=["mp3", "m4a", "opus", "flac", "wav"], default=None, help="音声フォーマット（audioモード時）")
     run_parser.add_argument("--format-list-limit", type=int, default=None, help="フォーマット一覧の最大件数")
     run_parser.add_argument("--retries", type=int, default=None, help="yt-dlpのリトライ回数")
     run_parser.add_argument(
@@ -218,7 +227,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_parser = subparsers.add_parser("config", help="設定の表示/変更")
     config_parser.add_argument("--set-download-dir", type=str, default=None, help="保存先")
     config_parser.add_argument("--set-workers", type=int, default=None, help="並列数")
-    config_parser.add_argument("--set-mode", type=str, default=None, help="auto/mp4/ask")
+    config_parser.add_argument("--set-mode", type=str, default=None, help="auto/mp4/ask/audio")
     config_parser.add_argument(
         "--set-prevent-sleep",
         dest="set_prevent_sleep",
@@ -248,6 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="失敗時に中断する",
     )
     config_parser.add_argument("--set-merge-output-format", type=str, default=None, help="結合後のコンテナ形式")
+    config_parser.add_argument("--set-audio-format", type=str, default=None, help="音声フォーマット (mp3/m4a/opus/flac/wav)")
     config_parser.set_defaults(func=_cmd_config)
 
     return parser

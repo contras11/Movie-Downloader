@@ -100,10 +100,11 @@ class FormatSelector:
         self.console.print("1) 最高品質（自動）")
         self.console.print("2) mp4優先（互換性重視）")
         self.console.print("3) 今回だけフォーマットを選ぶ（番号選択）")
-        default_map = {"auto": "1", "mp4": "2", "ask": "3"}
+        self.console.print("4) 音声のみ（mp3/m4a等）")
+        default_map = {"auto": "1", "mp4": "2", "ask": "3", "audio": "4"}
         default = default_map.get(cfg.format_mode, "1")
-        choice = Prompt.ask("> ", choices=["1", "2", "3"], default=default)
-        return {"1": "auto", "2": "mp4", "3": "ask"}[choice]
+        choice = Prompt.ask("> ", choices=["1", "2", "3", "4"], default=default)
+        return {"1": "auto", "2": "mp4", "3": "ask", "4": "audio"}[choice]
 
     def select_by_number(self, url: str, limit: int) -> str:
         """

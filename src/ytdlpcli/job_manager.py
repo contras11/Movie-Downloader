@@ -73,6 +73,8 @@ def _format_string_for_mode(mode: str) -> str:
         return "bestvideo+bestaudio/best"
     if mode == "mp4":
         return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+    if mode == "audio":
+        return "bestaudio/best"
     raise ValueError(mode)
 
 
@@ -87,8 +89,9 @@ class JobManager:
         """
         各URLに対してフォーマット文字列を決定して返す（URL, fmt）
         """
+        self._current_mode = mode
         jobs: List[Tuple[str, str]] = []
-        if mode in ("auto", "mp4"):
+        if mode in ("auto", "mp4", "audio"):
             fmt = _format_string_for_mode(mode)
             for url in urls:
                 jobs.append((url, fmt))
@@ -115,12 +118,15 @@ class JobManager:
         with ThreadPoolExecutor(max_workers=self.cfg.max_workers) as ex:
             # job構築とtask登録
             for (url, fmt) in jobs:
+                is_audio = getattr(self, "_current_mode", None) == "audio"
                 job = YtDlpJob(
                     url=url,
                     fmt=fmt,
                     download_dir=self.cfg.download_dir,
                     merge_output_format=self.cfg.merge_output_format,
                     retries=self.cfg.retries,
+                    audio_only=is_audio,
+                    audio_format=self.cfg.audio_format,
                 )
                 task_id = progress.add_task(
                     description=Formatter.short_url(url),

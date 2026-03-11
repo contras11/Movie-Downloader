@@ -5,6 +5,7 @@ macOS向けの対話型 yt-dlp ダウンローダーです。Richで複数ジョ
 ## 特長
 
 - 複数ジョブの進捗表示（% / 速度 / ETA / DL量）
+- 音声のみダウンロード（mp3/m4a/opus/flac/wav）
 - フォーマット一覧を自動取得して番号選択
 - 設定ファイル `~/.ytdlpcli.json` の自動生成と更新
 - 並列ダウンロード（ワーカー数は設定可）
@@ -100,7 +101,8 @@ ytdlpcli run
 - `--workers` 並列数（設定を上書き）
 - `--download-dir` 保存先（設定を上書き）
 - `--prevent-sleep / --no-prevent-sleep` スリープ防止の切り替え
-- `--mode` `auto` / `mp4` / `ask`（フォーマット選択方式）
+- `--mode` `auto` / `mp4` / `ask` / `audio`（フォーマット選択方式）
+- `--audio-format` 音声フォーマット（audioモード時: mp3/m4a/opus/flac/wav）
 - `--format-list-limit` フォーマット一覧の最大件数
 - `--retries` yt-dlpのリトライ回数
 - `--continue-on-error / --no-continue-on-error` 失敗時に続行するか
@@ -116,7 +118,8 @@ ytdlpcli run
 
 - `--set-download-dir` 保存先
 - `--set-workers` 並列数
-- `--set-mode` `auto` / `mp4` / `ask`
+- `--set-mode` `auto` / `mp4` / `ask` / `audio`
+- `--set-audio-format` 音声フォーマット（mp3/m4a/opus/flac/wav）
 - `--set-prevent-sleep / --set-no-prevent-sleep` スリープ防止
 - `--set-format-list-limit` フォーマット一覧の最大件数
 - `--set-retries` リトライ回数
@@ -136,7 +139,8 @@ ytdlpcli run
   "prevent_sleep": true,
   "format_list_limit": 12,
   "retries": 3,
-  "continue_on_error": true
+  "continue_on_error": true,
+  "audio_format": "mp3"
 }
 ```
 
@@ -154,6 +158,12 @@ ytdlpcli run --url-file urls.txt
 
 # mp4優先で保存（今回だけ）
 ytdlpcli run --mode mp4
+
+# 音声のみダウンロード（デフォルトmp3）
+ytdlpcli run --mode audio --url "https://www.youtube.com/watch?v=xxxx"
+
+# flac形式で音声ダウンロード
+ytdlpcli run --mode audio --audio-format flac --url "https://www.youtube.com/watch?v=xxxx"
 
 # 並列数とリトライ回数を上書き
 ytdlpcli run --workers 3 --retries 5

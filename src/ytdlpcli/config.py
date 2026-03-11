@@ -37,6 +37,9 @@ class AppConfig:
     # 失敗時に次へ進むか
     continue_on_error: bool = True
 
+    # 音声抽出時のフォーマット（mp3/m4a/opus/flac/wav）
+    audio_format: str = "mp3"
+
 
 def _coerce_config(data: dict[str, Any]) -> AppConfig:
     cfg = AppConfig()

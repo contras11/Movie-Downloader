@@ -43,12 +43,15 @@ class YtDlpJob:
     複数並列でも安全に扱えるよう、終了/停止制御を明示的に持つ。
     """
 
-    def __init__(self, url: str, fmt: str, download_dir: str, merge_output_format: str, retries: int):
+    def __init__(self, url: str, fmt: str, download_dir: str, merge_output_format: str, retries: int,
+                 audio_only: bool = False, audio_format: str = "mp3"):
         self.url = url
         self.fmt = fmt
         self.download_dir = download_dir
         self.merge_output_format = merge_output_format
         self.retries = retries
+        self.audio_only = audio_only
+        self.audio_format = audio_format
 
         self._proc: Optional[subprocess.Popen] = None
         self._lock = threading.Lock()
@@ -81,8 +84,12 @@ class YtDlpJob:
             str(self.retries),
             "-f",
             self.fmt,
-            "--merge-output-format",
-            self.merge_output_format,
+        ]
+        if self.audio_only:
+            cmd += ["-x", "--audio-format", self.audio_format, "--audio-quality", "0"]
+        else:
+            cmd += ["--merge-output-format", self.merge_output_format]
+        cmd += [
             "-o",
             outtmpl,
             "--progress-template",
@@ -139,11 +146,17 @@ class YtDlpJob:
             # 結合後の最終ファイル名推定（ログから取れる場合がある）
             # 例: [Merger] Merging formats into "....mp4"
             if 'Merging formats into "' in line:
-                # 雑に抽出（引用符）
                 try:
                     merged_part = line.split('Merging formats into "', 1)[1]
                     output_path = merged_part.rsplit('"', 1)[0]
                     self.output_path = output_path
+                except Exception:
+                    pass
+
+            # 音声抽出時の出力ファイル検出
+            if "[ExtractAudio] Destination:" in line:
+                try:
+                    self.output_path = line.split("[ExtractAudio] Destination:", 1)[1].strip()
                 except Exception:
                     pass
 
