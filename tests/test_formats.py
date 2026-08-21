@@ -2,6 +2,8 @@
 formats.py のテスト
 """
 
+import subprocess
+
 import pytest
 from unittest.mock import patch, Mock
 from ytdlpcli.formats import fetch_info_json, VideoFormat
@@ -25,6 +27,22 @@ def test_fetch_info_json_raises_error_when_command_fails():
 
     with patch("subprocess.run", return_value=mock_result):
         with pytest.raises(FormatFetchError):
+            fetch_info_json("https://example.com/video")
+
+
+def test_fetch_info_json_raises_error_when_command_times_out():
+    """フォーマット取得がタイムアウトした場合にFormatFetchErrorへ変換する"""
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("yt-dlp", 60)):
+        with pytest.raises(FormatFetchError, match="タイムアウト"):
+            fetch_info_json("https://example.com/video")
+
+
+def test_fetch_info_json_raises_error_for_invalid_json():
+    """yt-dlpのJSONが壊れている場合にFormatFetchErrorへ変換する"""
+    mock_result = Mock(returncode=0, stdout="not-json", stderr="")
+
+    with patch("subprocess.run", return_value=mock_result):
+        with pytest.raises(FormatFetchError, match="解析"):
             fetch_info_json("https://example.com/video")
 
 

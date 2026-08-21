@@ -13,8 +13,10 @@ from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt, IntPrompt
 from rich.panel import Panel
+from rich.text import Text
 
 from .config import AppConfig
+from .exceptions import FormatFetchError
 from .formats import list_video_formats
 
 console = Console()
@@ -87,6 +89,15 @@ class Formatter:
             return url[:37] + "..."
         return url
 
+    @staticmethod
+    def error_detail(tail: str, max_lines: int = 3, max_chars: int = 500) -> str:
+        """失敗ログから末尾の意味ある行だけを読みやすく抽出する。"""
+        lines = [line.strip() for line in tail.splitlines() if line.strip()]
+        detail = "\n".join(lines[-max_lines:])
+        if len(detail) > max_chars:
+            detail = "…" + detail[-(max_chars - 1):]
+        return detail
+
 
 class FormatSelector:
     """フォーマット選択UI"""
@@ -111,7 +122,13 @@ class FormatSelector:
         自動でフォーマットを取得→上位N件を表示→番号選択。
         返り値はyt-dlp -f に渡す format 文字列（video_id + bestaudio）。
         """
-        formats = list_video_formats(url)
+        try:
+            formats = list_video_formats(url)
+        except FormatFetchError as exc:
+            self.console.print(
+                Text(f"フォーマット取得に失敗したため、最高品質（自動）を使用します: {exc}", style="yellow")
+            )
+            return "bestvideo+bestaudio/best"
         if not formats:
             self.console.print("[yellow]フォーマット取得に失敗、最高品質（自動）にフォールバックします。[/yellow]")
             return "bestvideo+bestaudio/best"
@@ -124,7 +141,7 @@ class FormatSelector:
         table.add_column("概要")
 
         for index, fmt in enumerate(top_formats, start=1):
-            table.add_row(str(index), fmt.format_id, fmt.label)
+            table.add_row(str(index), Text(fmt.format_id), Text(fmt.label))
 
         self.console.print(table)
         selected_index = IntPrompt.ask("選択番号", default=1)
@@ -156,8 +173,13 @@ def print_summary(
         out_disp = out or ""
         tail_disp = ""
         if rc not in (0, 130):
-            # 失敗時のみ末尾ログを少し出す
-            tail_disp = (tail[-120:] if tail else "")
-        table.add_row(Formatter.short_url(url), str(rc), out_disp, memo + (f" {tail_disp}" if tail_disp else ""))
+            tail_disp = Formatter.error_detail(tail)
+        memo_text = memo + (f"\n{tail_disp}" if tail_disp else "")
+        table.add_row(
+            Text(Formatter.short_url(url)),
+            str(rc),
+            Text(out_disp),
+            Text(memo_text),
+        )
 
     console.print(table)

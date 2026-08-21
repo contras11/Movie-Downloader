@@ -40,7 +40,7 @@ pipx install -e .
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 **どこからでも実行できるようにする**には、以下のいずれかを設定：
@@ -110,6 +110,8 @@ ytdlpcli run
 - `--url` URLを直接指定（複数可）
 - `--url-file` URL一覧ファイル（1行1URL、空行と`#`は無視）
 
+`--url-file` を明示してファイルを読み込めなかった場合は、対話入力へ切り替えず終了コード2で終了します。
+
 ### config
 
 設定の表示/変更を行います。
@@ -144,6 +146,16 @@ ytdlpcli run
 }
 ```
 
+設定JSONが壊れている場合は、元ファイルを同じ場所へ `.invalid-YYYYMMDD-HHMMSS` 形式で退避し、既定設定を再生成します。一部の値だけが不正な場合は、正常な値を保持して不正値だけを既定値へ補正します。
+
+設定値には次の制約があります。
+
+- `max_workers` と `format_list_limit`: 1以上の整数
+- `retries`: 0以上の整数
+- `format_mode`: `auto` / `mp4` / `ask` / `audio`
+- `audio_format`: `mp3` / `m4a` / `opus` / `flac` / `wav`
+- `download_dir` と `merge_output_format`: 空でない文字列
+
 ## 使い方例
 
 ```bash
@@ -173,7 +185,7 @@ ytdlpcli run --workers 3 --retries 5
 
 ```
 src/ytdlpcli/
-├── cli.py           # コマンドラインインターフェース（260行）
+├── cli.py           # コマンドラインインターフェース
 ├── config.py        # 設定管理
 ├── exceptions.py    # カスタム例外クラス
 ├── formats.py       # フォーマット取得・解析
@@ -187,7 +199,20 @@ src/ytdlpcli/
 - `yt-dlp` と `ffmpeg` が必要です。
 - 4Kなど高ビットレートでは並列数を上げると逆に遅くなることがあります（推奨は2〜3）。
 - プレイリストは `--no-playlist` で無効化しています。
+- askモードのフォーマット情報取得は60秒でタイムアウトし、取得できない場合は最高品質の自動選択へフォールバックします。
+- 終了コードは、成功が`0`、ダウンロード失敗が`1`、入力・設定・依存エラーが`2`、ユーザーによる中断が`130`です。
 - v0.1.0で進捗表示の問題を修正し、コードベースを大幅にリファクタリングしました。
+
+## 開発とテスト
+
+開発依存を含めてインストールし、テストを実行します。
+
+```bash
+pip install -e ".[dev]"
+python -m pytest -q
+```
+
+GitHub ActionsではPython 3.10と3.14で同じテストを実行します。
 
 ## トラブルシュート / FAQ
 

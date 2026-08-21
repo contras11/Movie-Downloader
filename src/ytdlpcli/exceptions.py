@@ -7,7 +7,7 @@ ytdlpcli固有の例外クラスを定義します。
 
 
 class YtdlpCliError(Exception):
-    """ytdlpclの基底例外クラス"""
+    """ytdlpcliの基底例外クラス"""
     pass
 
 
@@ -23,6 +23,16 @@ class YtdlpNotFoundError(YtdlpCliError):
 
 class FormatFetchError(YtdlpCliError):
     """フォーマット情報の取得に失敗した場合の例外"""
+    pass
+
+
+class ConfigError(YtdlpCliError):
+    """設定ファイルの読み書きに失敗した場合の例外"""
+    pass
+
+
+class UrlFileReadError(YtdlpCliError):
+    """URL一覧ファイルの読み込みに失敗した場合の例外"""
     pass
 
 

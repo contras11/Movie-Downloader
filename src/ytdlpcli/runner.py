@@ -64,6 +64,22 @@ class YtDlpJob:
     def start(self) -> None:
         os.makedirs(self.download_dir, exist_ok=True)
 
+        cmd = self._build_command()
+
+        try:
+            self._proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+        except FileNotFoundError as e:
+            raise YtdlpNotFoundError() from e
+
+    def _build_command(self) -> list[str]:
+        """副作用なしでyt-dlpの実行引数を構築する。"""
+
         # 進捗を機械可読な形式で出す（行単位）
         # total_bytes（実際の値）を優先、なければtotal_bytes_estimate（推定値）を使用
         progress_template = (
@@ -80,6 +96,7 @@ class YtDlpJob:
             "yt-dlp",
             "--newline",
             "--no-warnings",
+            "--no-playlist",
             "--retries",
             str(self.retries),
             "-f",
@@ -97,17 +114,7 @@ class YtDlpJob:
             f"download:{progress_template}",
             self.url,
         ]
-
-        try:
-            self._proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
-        except FileNotFoundError as e:
-            raise YtdlpNotFoundError() from e
+        return cmd
 
     def poll_progress(self) -> ProgressSnapshot:
         with self._lock:

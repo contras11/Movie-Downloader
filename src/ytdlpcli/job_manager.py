@@ -10,15 +10,29 @@ from __future__ import annotations
 import signal
 import threading
 import time
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple, Optional
+from dataclasses import dataclass
+from typing import Iterator, List, Tuple, Optional
 
 from rich.progress import Progress, TaskID
 from rich.panel import Panel
+from rich.markup import escape
+from rich.text import Text
 
 from .runner import YtDlpJob
 from .config import AppConfig
+from .exceptions import YtdlpNotFoundError
 from .ui import Formatter, FormatSelector, console
+
+
+@dataclass(frozen=True)
+class DownloadSpec:
+    """1件のダウンロードに必要な入力を明示的に保持する。"""
+
+    url: str
+    format_selector: str
+    audio_only: bool
 
 
 class CancelController:
@@ -45,24 +59,37 @@ class CancelController:
                 job.terminate()
 
 
-def install_signal_handlers(controller: CancelController) -> None:
-    """シグナルハンドラーをインストール"""
+@contextmanager
+def managed_signal_handlers(controller: CancelController) -> Iterator[None]:
+    """実行中だけシグナルハンドラーを差し替え、終了時に復元する。"""
     def handler(sig, frame):
         controller.cancel_all("user")
 
-    signal.signal(signal.SIGINT, handler)
-    signal.signal(signal.SIGTERM, handler)
+    previous_handlers = {
+        sig: signal.getsignal(sig)
+        for sig in (signal.SIGINT, signal.SIGTERM)
+    }
+    try:
+        for sig in previous_handlers:
+            signal.signal(sig, handler)
+        yield
+    finally:
+        for sig, previous in previous_handlers.items():
+            signal.signal(sig, previous)
 
 
 def _run_one(job: YtDlpJob, controller: CancelController) -> Tuple[int, Optional[str], str]:
     """
     1ジョブの実行（別スレッドで呼ばれる）
     """
+    controller.register(job)
     if controller.cancel_event.is_set():
         return (130, None, "Cancelled before start")
 
-    controller.register(job)
     job.start()
+    if controller.cancel_event.is_set():
+        # process生成とキャンセルが競合しても、起動後にもう一度停止を保証する。
+        job.terminate()
     rc = job.wait()
     return (rc, job.output_path, job.stderr_tail)
 
@@ -85,29 +112,28 @@ class JobManager:
         self.cfg = cfg
         self.controller = controller
 
-    def create_jobs(self, urls: List[str], mode: str) -> List[Tuple[str, str]]:
+    def create_jobs(self, urls: List[str], mode: str) -> List[DownloadSpec]:
         """
-        各URLに対してフォーマット文字列を決定して返す（URL, fmt）
+        各URLに対してフォーマットと音声モードを決定して返す。
         """
-        self._current_mode = mode
-        jobs: List[Tuple[str, str]] = []
+        jobs: List[DownloadSpec] = []
         if mode in ("auto", "mp4", "audio"):
             fmt = _format_string_for_mode(mode)
             for url in urls:
-                jobs.append((url, fmt))
+                jobs.append(DownloadSpec(url=url, format_selector=fmt, audio_only=mode == "audio"))
             return jobs
 
         # mode == ask: URLごとに番号選択
         selector = FormatSelector(console)
         for url in urls:
-            console.print(Panel.fit(f"フォーマット選択: {url}", title="選択", border_style="cyan"))
+            console.print(Panel.fit(Text(f"フォーマット選択: {url}"), title="選択", border_style="cyan"))
             fmt = selector.select_by_number(url, self.cfg.format_list_limit)
-            jobs.append((url, fmt))
+            jobs.append(DownloadSpec(url=url, format_selector=fmt, audio_only=False))
         return jobs
 
     def execute_parallel(
         self,
-        jobs: List[Tuple[str, str]],
+        jobs: List[DownloadSpec],
         progress: Progress
     ) -> List[Tuple[str, int, Optional[str], str]]:
         """並列実行とリアルタイム進捗表示"""
@@ -117,19 +143,19 @@ class JobManager:
 
         with ThreadPoolExecutor(max_workers=self.cfg.max_workers) as ex:
             # job構築とtask登録
-            for (url, fmt) in jobs:
-                is_audio = getattr(self, "_current_mode", None) == "audio"
+            for spec in jobs:
+                url = spec.url
                 job = YtDlpJob(
                     url=url,
-                    fmt=fmt,
+                    fmt=spec.format_selector,
                     download_dir=self.cfg.download_dir,
                     merge_output_format=self.cfg.merge_output_format,
                     retries=self.cfg.retries,
-                    audio_only=is_audio,
+                    audio_only=spec.audio_only,
                     audio_format=self.cfg.audio_format,
                 )
                 task_id = progress.add_task(
-                    description=Formatter.short_url(url),
+                    description=escape(Formatter.short_url(url)),
                     total=1.0,
                     pct="--.-%",
                     dl="-- / --",
@@ -151,7 +177,7 @@ class JobManager:
                     if not cancel_marked:
                         for (url, task_id, job, future) in futures:
                             if not future.done():
-                                progress.update(task_id, description=Formatter.short_url(url) + " (cancelled)")
+                                progress.update(task_id, description=escape(Formatter.short_url(url)) + " (cancelled)")
                         cancel_marked = True
 
                 # 全taskの進捗反映
@@ -174,13 +200,12 @@ class JobManager:
                     )
 
                 # 完了future収集
-                from .exceptions import YtdlpNotFoundError
                 for (url, task_id, job, future) in futures:
                     if future in unfinished and future.done():
                         try:
                             rc, out, tail = future.result()
                         except YtdlpNotFoundError as exc:
-                            console.print(f"[red]{exc}[/red]")
+                            console.print(Text(str(exc), style="red"))
                             self.controller.cancel_all("dependency_error")
                             rc, out, tail = (2, None, str(exc))
                         except Exception as exc:
@@ -189,11 +214,11 @@ class JobManager:
                         unfinished.remove(future)
 
                         if rc == 0:
-                            progress.update(task_id, completed=1.0, description=Formatter.short_url(url) + " (done)")
+                            progress.update(task_id, completed=1.0, description=escape(Formatter.short_url(url)) + " (done)")
                         elif rc == 130:
-                            progress.update(task_id, description=Formatter.short_url(url) + " (cancelled)")
+                            progress.update(task_id, description=escape(Formatter.short_url(url)) + " (cancelled)")
                         else:
-                            progress.update(task_id, description=Formatter.short_url(url) + f" (error {rc})")
+                            progress.update(task_id, description=escape(Formatter.short_url(url)) + f" (error {rc})")
                             if not self.cfg.continue_on_error:
                                 self.controller.cancel_all("error")
 

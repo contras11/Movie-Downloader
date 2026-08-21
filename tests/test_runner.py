@@ -67,3 +67,18 @@ def test_terminate_calls_proc_terminate():
 
     job.terminate()
     mock_proc.terminate.assert_called_once()
+
+
+@pytest.mark.parametrize("audio_only", [False, True])
+def test_build_command_disables_playlist_for_video_and_audio(audio_only):
+    """動画・音声の両モードでプレイリストを無効化する"""
+    job = YtDlpJob(
+        url="https://example.com/video?list=playlist",
+        fmt="best",
+        download_dir="/tmp",
+        merge_output_format="mp4",
+        retries=3,
+        audio_only=audio_only,
+    )
+
+    assert "--no-playlist" in job._build_command()

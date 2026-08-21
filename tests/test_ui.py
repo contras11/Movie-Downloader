@@ -1,8 +1,13 @@
-"""
-ui.py のテスト
-"""
+"""ui.py のテスト"""
 
-from ytdlpcli.ui import Formatter
+from io import StringIO
+from unittest.mock import patch
+
+import pytest
+from rich.console import Console
+
+from ytdlpcli.exceptions import FormatFetchError, YtdlpNotFoundError
+from ytdlpcli.ui import Formatter, FormatSelector, print_summary
 
 
 def test_format_bytes():
@@ -64,3 +69,43 @@ def test_short_url_short():
     """短いURLはそのまま"""
     url = "https://example.com/video"
     assert Formatter.short_url(url) == url
+
+
+def test_error_detail_keeps_last_meaningful_lines_and_limits_length():
+    """失敗ログは空行を除き末尾の意味ある行へ絞る"""
+    detail = Formatter.error_detail("first\n\nsecond\nthird\nfourth", max_lines=3)
+
+    assert detail == "second\nthird\nfourth"
+
+
+def test_format_selector_falls_back_when_format_fetch_fails():
+    """askモードの通信失敗時に自動フォーマットへフォールバックする"""
+    output = StringIO()
+    selector = FormatSelector(Console(file=output, force_terminal=False))
+
+    with patch("ytdlpcli.ui.list_video_formats", side_effect=FormatFetchError("network error")):
+        selected = selector.select_by_number("https://example.com/video", 12)
+
+    assert selected == "bestvideo+bestaudio/best"
+    assert "最高品質" in output.getvalue()
+
+
+def test_format_selector_does_not_hide_missing_ytdlp():
+    """依存不足は自動フォールバックせず上位へ伝える"""
+    selector = FormatSelector(Console(file=StringIO(), force_terminal=False))
+
+    with patch("ytdlpcli.ui.list_video_formats", side_effect=YtdlpNotFoundError()):
+        with pytest.raises(YtdlpNotFoundError):
+            selector.select_by_number("https://example.com/video", 12)
+
+
+def test_summary_displays_log_markup_as_plain_text():
+    """URLやログ内の角括弧をRichマークアップとして解釈しない"""
+    output = StringIO()
+
+    with patch("ytdlpcli.ui.console", Console(file=output, force_terminal=False, width=120)):
+        print_summary([("https://example.com/[video]", 1, None, "[error] denied")], True)
+
+    rendered = output.getvalue()
+    assert "[video]" in rendered
+    assert "[error] denied" in rendered

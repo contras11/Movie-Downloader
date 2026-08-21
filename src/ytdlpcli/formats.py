@@ -7,6 +7,8 @@ from typing import List, Optional
 
 from .exceptions import YtdlpNotFoundError, FormatFetchError
 
+FORMAT_FETCH_TIMEOUT_SECONDS = 60
+
 
 @dataclass(frozen=True)
 class VideoFormat:
@@ -38,13 +40,28 @@ def fetch_info_json(url: str) -> dict:
     # -J はJSON、--no-playlistで単体、--no-warningsでノイズ低減
     cmd = ["yt-dlp", "-J", "--no-playlist", "--no-warnings", url]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=FORMAT_FETCH_TIMEOUT_SECONDS,
+        )
     except FileNotFoundError as e:
         raise YtdlpNotFoundError() from e
+    except subprocess.TimeoutExpired as exc:
+        raise FormatFetchError(
+            f"フォーマット情報の取得が{FORMAT_FETCH_TIMEOUT_SECONDS}秒でタイムアウトしました"
+        ) from exc
 
     if result.returncode != 0:
         raise FormatFetchError(result.stderr.strip() or "yt-dlp -J failed")
-    return json.loads(result.stdout)
+    try:
+        info = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise FormatFetchError("yt-dlpのフォーマット情報を解析できませんでした") from exc
+    if not isinstance(info, dict):
+        raise FormatFetchError("yt-dlpのフォーマット情報が不正です")
+    return info
 
 
 def list_video_formats(url: str) -> List[VideoFormat]:
