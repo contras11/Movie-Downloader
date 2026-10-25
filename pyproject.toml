@@ -7,7 +7,7 @@ name = "ytdlpcli"
 version = "0.1.0"
 description = "Interactive yt-dlp downloader for macOS with Rich progress, format selection, config, parallel downloads."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
   "rich>=14.3.4,<15",
   # Richの間接依存で、既知の脆弱性を修正した版を要求する。

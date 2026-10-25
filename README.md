@@ -16,6 +16,8 @@ macOS向けの対話型 yt-dlp ダウンローダーです。Richで複数ジョ
 
 ### 前提条件
 
+Python 3.11以上が必要です。利用する系列の最新の修正版を使用してください。
+
 ```bash
 brew install yt-dlp ffmpeg
 ```
@@ -217,7 +219,7 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-GitHub ActionsではPython 3.10と3.14で同じテストを実行します。
+GitHub ActionsではPython 3.11と3.14で同じテストを実行します。
 
 ## トラブルシュート / FAQ
 
