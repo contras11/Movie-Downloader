@@ -41,7 +41,10 @@ def _read_urls_interactive() -> List[str]:
     console.print("URLを入力してください（空行で開始）:")
     urls: List[str] = []
     while True:
-        line = input("> ").strip()
+        try:
+            line = input("> ").strip()
+        except EOFError:
+            break
         if not line:
             break
         urls.append(line)
@@ -164,9 +167,10 @@ def _cmd_run(args) -> int:
     )
 
     try:
+        # 選択中のCtrl+Cは通常の入力中断として扱う。
+        jobs = manager.create_jobs(urls, mode)
         with managed_signal_handlers(controller):
             with progress:
-                jobs = manager.create_jobs(urls, mode)
                 results = manager.execute_parallel(jobs, progress)
     finally:
         _prevent_sleep_stop(caffeinate_proc)
@@ -227,7 +231,7 @@ def _cmd_config(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ytdlpcli", description="Interactive yt-dlp CLI (macOS) with Rich progress.")
+    parser = argparse.ArgumentParser(prog="ytdlpcli", description="複数ジョブの進捗を表示する、macOS向けの対話型yt-dlpダウンローダー。")
     subparsers = parser.add_subparsers(dest="cmd", required=True)
 
     init_parser = subparsers.add_parser("init-config", help="~/.ytdlpcli.json を作成（存在していても正規化して保存）")
@@ -304,6 +308,9 @@ def main() -> None:
     except KeyboardInterrupt:
         console.print("\n中断しました。")
         rc = 130
+    except EOFError:
+        console.print("選択に必要な入力がありません。--mode などのオプションを指定してください。")
+        rc = 2
     except YtdlpCliError as exc:
         console.print(Text(str(exc), style="red"))
         rc = 2

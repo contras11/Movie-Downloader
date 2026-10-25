@@ -3,6 +3,7 @@ formats.py のテスト
 """
 
 import subprocess
+import sys
 
 import pytest
 from unittest.mock import patch, Mock
@@ -66,3 +67,25 @@ def test_video_format_label():
     assert "avc1" in label
     assert "2500kbps" in label
     assert "100MiB" in label
+
+
+def test_format_fetch_treats_option_like_url_as_positional_argument():
+    result = Mock(returncode=0, stdout='{"formats": []}', stderr="")
+    with patch("subprocess.run", return_value=result) as run:
+        fetch_info_json("--exec=unexpected-command")
+
+    assert run.call_args.args[0][-2:] == ["--", "--exec=unexpected-command"]
+
+
+def test_invalid_bytes_in_fetch_error_are_reported_without_decode_failure():
+    run_process = subprocess.run
+
+    def emit_invalid_error(command, **kwargs):
+        return run_process(
+            [sys.executable, "-c", "import os; os.write(2, b'error: \\xff'); raise SystemExit(1)"],
+            **kwargs,
+        )
+
+    with patch("ytdlpcli.formats.subprocess.run", side_effect=emit_invalid_error):
+        with pytest.raises(FormatFetchError, match="error:"):
+            fetch_info_json("https://example.com/video")

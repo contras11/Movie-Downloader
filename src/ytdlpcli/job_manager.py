@@ -42,21 +42,27 @@ class CancelController:
         self.cancel_event = threading.Event()
         self.reason: Optional[str] = None
         self._jobs: List[YtDlpJob] = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def register(self, job: YtDlpJob) -> None:
         """ジョブを登録"""
         with self._lock:
             self._jobs.append(job)
 
+    def unregister(self, job: YtDlpJob) -> None:
+        """終了済みのプロセスを後続のキャンセル対象から外す。"""
+        with self._lock:
+            self._jobs.remove(job)
+
     def cancel_all(self, reason: str = "user") -> None:
         """全てのジョブをキャンセル"""
-        if self.reason is None:
-            self.reason = reason
-        self.cancel_event.set()
         with self._lock:
-            for job in self._jobs:
-                job.terminate()
+            if self.reason is None:
+                self.reason = reason
+            self.cancel_event.set()
+            jobs = tuple(self._jobs)
+        for job in jobs:
+            job.terminate()
 
 
 @contextmanager
@@ -78,20 +84,37 @@ def managed_signal_handlers(controller: CancelController) -> Iterator[None]:
             signal.signal(sig, previous)
 
 
-def _run_one(job: YtDlpJob, controller: CancelController) -> Tuple[int, Optional[str], str]:
+def _run_one(
+    job: YtDlpJob, controller: CancelController, continue_on_error: bool = True
+) -> Tuple[int, Optional[str], str]:
     """
     1ジョブの実行（別スレッドで呼ばれる）
     """
     controller.register(job)
-    if controller.cancel_event.is_set():
-        return (130, None, "Cancelled before start")
+    try:
+        if controller.cancel_event.is_set():
+            return (130, None, "Cancelled before start")
 
-    job.start()
-    if controller.cancel_event.is_set():
-        # process生成とキャンセルが競合しても、起動後にもう一度停止を保証する。
-        job.terminate()
-    rc = job.wait()
-    return (rc, job.output_path, job.stderr_tail)
+        job.start()
+        if controller.cancel_event.is_set():
+            # process生成とキャンセルが競合しても、起動後にもう一度停止を保証する。
+            job.terminate()
+        rc = job.wait()
+        if rc != 0:
+            if controller.cancel_event.is_set():
+                rc = 130
+            elif not continue_on_error:
+                controller.cancel_all("error")
+        return (rc, job.output_path, job.stderr_tail)
+    except YtdlpNotFoundError:
+        controller.cancel_all("dependency_error")
+        raise
+    except Exception:
+        if not continue_on_error:
+            controller.cancel_all("error")
+        raise
+    finally:
+        controller.unregister(job)
 
 
 def _format_string_for_mode(mode: str) -> str:
@@ -164,7 +187,7 @@ class JobManager:
                 )
                 tasks.append((task_id, job))
 
-                future = ex.submit(_run_one, job, self.controller)
+                future = ex.submit(_run_one, job, self.controller, self.cfg.continue_on_error)
                 futures.append((url, task_id, job, future))
 
             # 進捗ポーリングループ（完了まで回す）
@@ -206,7 +229,6 @@ class JobManager:
                             rc, out, tail = future.result()
                         except YtdlpNotFoundError as exc:
                             console.print(Text(str(exc), style="red"))
-                            self.controller.cancel_all("dependency_error")
                             rc, out, tail = (2, None, str(exc))
                         except Exception as exc:
                             rc, out, tail = (1, None, str(exc))
@@ -219,8 +241,6 @@ class JobManager:
                             progress.update(task_id, description=escape(Formatter.short_url(url)) + " (cancelled)")
                         else:
                             progress.update(task_id, description=escape(Formatter.short_url(url)) + f" (error {rc})")
-                            if not self.cfg.continue_on_error:
-                                self.controller.cancel_all("error")
 
                 time.sleep(0.2)
 

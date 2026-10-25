@@ -123,7 +123,10 @@ def load_config_with_recovery(path: str = DEFAULT_CONFIG_PATH) -> ConfigLoadResu
     try:
         with open(path, "r", encoding="utf-8") as file_handle:
             data = json.load(file_handle)
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except OSError as exc:
+        # 読み込み権限やI/Oの問題では、元の設定を変更しない。
+        raise ConfigError(f"設定ファイルを読み込めませんでした: {exc}") from exc
+    except (UnicodeError, json.JSONDecodeError) as exc:
         backup_path = _backup_invalid_config(path)
         cfg = AppConfig()
         save_config(cfg, path)

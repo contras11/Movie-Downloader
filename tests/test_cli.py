@@ -1,11 +1,13 @@
 """cli.py の入力・終了コードテスト"""
 
 import argparse
+import signal
 from unittest.mock import Mock, patch
 
 import pytest
 
-from ytdlpcli.cli import _read_urls_from_args, build_parser, main
+from ytdlpcli.cli import _cmd_run, _read_urls_from_args, _read_urls_interactive, build_parser, main
+from ytdlpcli.config import AppConfig
 from ytdlpcli.exceptions import UrlFileReadError, YtdlpCliError
 
 
@@ -63,3 +65,32 @@ def test_main_converts_expected_cli_error_to_exit_code_2():
             main()
 
     assert exc_info.value.code == 2
+
+
+def test_interactive_url_input_accepts_eof_after_urls():
+    with patch("builtins.input", side_effect=["https://example.com/video", EOFError]):
+        assert _read_urls_interactive() == ["https://example.com/video"]
+
+
+def test_main_reports_eof_at_a_required_prompt_as_input_error():
+    parser = Mock()
+    parser.parse_args.return_value = argparse.Namespace(func=Mock(side_effect=EOFError))
+
+    with patch("ytdlpcli.cli.build_parser", return_value=parser):
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+    assert exc_info.value.code == 2
+
+
+def test_interrupt_during_format_selection_stops_before_download():
+    args = build_parser().parse_args(["run", "--mode", "ask", "--url", "https://example.com/video"])
+
+    def interrupt_selection(*args):
+        signal.raise_signal(signal.SIGINT)
+        return []
+
+    with patch("ytdlpcli.cli._load_config_for_cli", return_value=AppConfig(prevent_sleep=False)):
+        with patch("ytdlpcli.cli.JobManager.create_jobs", side_effect=interrupt_selection):
+            with pytest.raises(KeyboardInterrupt):
+                _cmd_run(args)

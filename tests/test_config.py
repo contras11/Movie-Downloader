@@ -6,7 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from ytdlpcli.config import AppConfig, load_config_with_recovery, save_config
+from ytdlpcli.exceptions import ConfigError
 
 
 def test_malformed_json_is_backed_up_and_recreated(tmp_path):
@@ -116,3 +119,29 @@ def test_save_config_replaces_file_without_leaving_temporary_file(tmp_path):
     assert json.loads(config_path.read_text(encoding="utf-8"))["max_workers"] == 5
     assert list(tmp_path.iterdir()) == [config_path]
     mock_replace.assert_called_once()
+
+
+def test_read_error_does_not_replace_existing_config(tmp_path):
+    config_path = tmp_path / "config.json"
+    original = '{"max_workers": 5}'
+    config_path.write_text(original, encoding="utf-8")
+
+    with patch("builtins.open", side_effect=PermissionError("permission denied")):
+        with pytest.raises(ConfigError, match="読み込"):
+            load_config_with_recovery(str(config_path))
+
+    assert config_path.read_text(encoding="utf-8") == original
+    assert list(tmp_path.iterdir()) == [config_path]
+
+
+def test_directory_at_config_path_is_preserved(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.mkdir()
+    marker = config_path / "keep.txt"
+    marker.write_text("keep", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="読み込"):
+        load_config_with_recovery(str(config_path))
+
+    assert marker.read_text(encoding="utf-8") == "keep"
+    assert list(tmp_path.iterdir()) == [config_path]

@@ -38,12 +38,13 @@ class VideoFormat:
 
 def fetch_info_json(url: str) -> dict:
     # -J はJSON、--no-playlistで単体、--no-warningsでノイズ低減
-    cmd = ["yt-dlp", "-J", "--no-playlist", "--no-warnings", url]
+    cmd = ["yt-dlp", "-J", "--no-playlist", "--no-warnings", "--", url]
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=FORMAT_FETCH_TIMEOUT_SECONDS,
         )
     except FileNotFoundError as e:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -54,7 +55,8 @@ class YtDlpJob:
         self.audio_format = audio_format
 
         self._proc: Optional[subprocess.Popen] = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._stop_timer: Optional[threading.Timer] = None
         self._progress = ProgressSnapshot()
 
         self.output_path: Optional[str] = None  # 成功時に推定される最終出力（完全保証はしない）
@@ -72,7 +74,9 @@ class YtDlpJob:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                errors="replace",
                 bufsize=1,
+                start_new_session=True,
             )
         except FileNotFoundError as e:
             raise YtdlpNotFoundError() from e
@@ -112,6 +116,7 @@ class YtDlpJob:
             outtmpl,
             "--progress-template",
             f"download:{progress_template}",
+            "--",
             self.url,
         ]
         return cmd
@@ -127,8 +132,21 @@ class YtDlpJob:
 
     def terminate(self) -> None:
         with self._lock:
-            if self._proc and self._proc.poll() is None:
-                self._proc.terminate()
+            if self._proc is None or self.returncode is not None or self._stop_timer is not None:
+                return
+            self._signal_process_group(signal.SIGTERM)
+            # 子が標準出力を保持していても、猶予後に終了待ちを解除する。
+            self._stop_timer = threading.Timer(2.0, self._signal_process_group, args=(signal.SIGKILL,))
+            self._stop_timer.daemon = True
+            self._stop_timer.start()
+
+    def _signal_process_group(self, sig: int) -> None:
+        with self._lock:
+            if self._proc is not None and self.returncode is None:
+                try:
+                    os.killpg(self._proc.pid, sig)
+                except ProcessLookupError:
+                    pass
 
     def wait(self) -> int:
         if not self._proc or not self._proc.stdout:
@@ -136,44 +154,46 @@ class YtDlpJob:
 
         # stdoutを読みながら進捗更新（stderrはSTDOUTにリダイレクト済み）
         tail_lines = []
-        for line in self._proc.stdout:
-            line = line.strip()
-            if not line:
-                continue
+        try:
+            for line in self._proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
 
-            # 進捗行
-            match = _PROGRESS_RE.match(line)
-            if match:
-                with self._lock:
-                    self._progress.downloaded = _parse_progress_value(match.group("downloaded"))
-                    self._progress.total = _parse_progress_value(match.group("total"))
-                    self._progress.eta = _parse_progress_value(match.group("eta"))
-                    self._progress.speed = _parse_progress_value(match.group("speed"))
-                continue
+                # 進捗行
+                match = _PROGRESS_RE.match(line)
+                if match:
+                    with self._lock:
+                        self._progress.downloaded = _parse_progress_value(match.group("downloaded"))
+                        self._progress.total = _parse_progress_value(match.group("total"))
+                        self._progress.eta = _parse_progress_value(match.group("eta"))
+                        self._progress.speed = _parse_progress_value(match.group("speed"))
+                    continue
 
-            # 結合後の最終ファイル名推定（ログから取れる場合がある）
-            # 例: [Merger] Merging formats into "....mp4"
-            if 'Merging formats into "' in line:
-                try:
+                # 結合後の最終ファイル名推定（ログから取れる場合がある）
+                # 例: [Merger] Merging formats into "....mp4"
+                if 'Merging formats into "' in line:
                     merged_part = line.split('Merging formats into "', 1)[1]
-                    output_path = merged_part.rsplit('"', 1)[0]
-                    self.output_path = output_path
-                except Exception:
-                    pass
+                    self.output_path = merged_part.rsplit('"', 1)[0]
 
-            # 音声抽出時の出力ファイル検出
-            if "[ExtractAudio] Destination:" in line:
-                try:
+                # 音声抽出時の出力ファイル検出
+                if "[ExtractAudio] Destination:" in line:
                     self.output_path = line.split("[ExtractAudio] Destination:", 1)[1].strip()
-                except Exception:
-                    pass
 
-            # エラー解析用に末尾を保持
-            tail_lines.append(line)
-            if len(tail_lines) > 30:
-                tail_lines.pop(0)
-
-        rc = self._proc.wait()
-        self.returncode = rc
-        self.stderr_tail = "\n".join(tail_lines)
+                # エラー解析用に末尾を保持
+                tail_lines.append(line)
+                if len(tail_lines) > 30:
+                    tail_lines.pop(0)
+        except BaseException:
+            self.terminate()
+            raise
+        finally:
+            self._proc.stdout.close()
+            rc = self._proc.wait()
+            with self._lock:
+                if self._stop_timer is not None:
+                    self._stop_timer.cancel()
+                    self._signal_process_group(signal.SIGKILL)
+                self.returncode = rc
+            self.stderr_tail = "\n".join(tail_lines)
         return rc

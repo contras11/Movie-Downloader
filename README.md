@@ -22,7 +22,7 @@ brew install yt-dlp ffmpeg
 
 ### 方法1: pipxでインストール（推奨）
 
-どこからでも`ytdlpcli`コマンドを実行したい場合は、pipxを使用します：
+どこからでも`ytdlpcli`コマンドを実行したい場合は、pipxを使用します。
 
 ```bash
 brew install pipx
@@ -35,26 +35,27 @@ pipx install -e .
 
 ### 方法2: 開発環境でインストール
 
-プロジェクトディレクトリ内で開発・使用する場合：
+プロジェクトディレクトリ内で開発・使用する場合は、次の手順でインストールします。
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install --upgrade "pip>=26.2.2"
+python -m pip install -e ".[dev]"
 ```
 
-**どこからでも実行できるようにする**には、以下のいずれかを設定：
+どこからでも実行できるようにするには、以下のいずれかを設定します。
 
 <details>
 <summary>オプションA: シェルエイリアスを追加</summary>
 
-`~/.zshrc`（bashなら`~/.bashrc`）に追加：
+`~/.zshrc`（bashなら`~/.bashrc`）に追加します。
 
 ```bash
 alias ytdlpcli='source /path/to/Movie-Downloader/.venv/bin/activate && ytdlpcli'
 ```
 
-設定を反映：
+設定を反映します。
 ```bash
 source ~/.zshrc
 ```
@@ -63,7 +64,7 @@ source ~/.zshrc
 <details>
 <summary>オプションB: ラッパースクリプトを作成</summary>
 
-`~/.local/bin/ytdlpcli`を作成：
+`~/.local/bin/ytdlpcli`を作成します。
 
 ```bash
 #!/bin/bash
@@ -71,7 +72,7 @@ VENV_PATH="/path/to/Movie-Downloader/.venv"
 exec "$VENV_PATH/bin/ytdlpcli" "$@"
 ```
 
-実行権限を付与してPATHに追加：
+実行権限を付与し、保存したディレクトリをPATHに追加します。
 ```bash
 chmod +x ~/.local/bin/ytdlpcli
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
@@ -111,6 +112,7 @@ ytdlpcli run
 - `--url-file` URL一覧ファイル（1行1URL、空行と`#`は無視）
 
 `--url-file` を明示してファイルを読み込めなかった場合は、対話入力へ切り替えず終了コード2で終了します。
+URLの対話入力では空行に加えてEOF（入力の終端）でも入力を終えられます。方式やフォーマットを選択する入力がない場合は終了コード2で終了します。
 
 ### config
 
@@ -146,7 +148,9 @@ ytdlpcli run
 }
 ```
 
-設定JSONが壊れている場合は、元ファイルを同じ場所へ `.invalid-YYYYMMDD-HHMMSS` 形式で退避し、既定設定を再生成します。一部の値だけが不正な場合は、正常な値を保持して不正値だけを既定値へ補正します。
+設定JSONが破損している場合は、元ファイルを同じ場所へ `.invalid-YYYYMMDD-HHMMSS` 形式で退避し、既定設定を再生成します。一部の値だけが不正な場合は、正常な値を保持して不正値だけを既定値へ補正します。
+
+権限不足などで設定ファイルを読み込めない場合は、元のファイルを変更せず終了します。
 
 設定値には次の制約があります。
 
@@ -198,17 +202,18 @@ src/ytdlpcli/
 
 - `yt-dlp` と `ffmpeg` が必要です。
 - 4Kなど高ビットレートでは並列数を上げると逆に遅くなることがあります（推奨は2〜3）。
-- プレイリストは `--no-playlist` で無効化しています。
+- 動画とプレイリストの両方を指すURLでは、`--no-playlist` により動画だけを取得します。プレイリスト自体のURLを指定すると、一覧全体が対象になる場合があります。
 - askモードのフォーマット情報取得は60秒でタイムアウトし、取得できない場合は最高品質の自動選択へフォールバックします。
 - 終了コードは、成功が`0`、ダウンロード失敗が`1`、入力・設定・依存エラーが`2`、ユーザーによる中断が`130`です。
-- v0.1.0で進捗表示の問題を修正し、コードベースを大幅にリファクタリングしました。
+- v0.1.0で進捗表示の問題を修正し、コードベースをリファクタリングしました。
 
 ## 開発とテスト
 
 開発依存を含めてインストールし、テストを実行します。
 
 ```bash
-pip install -e ".[dev]"
+python -m pip install --upgrade "pip>=26.2.2"
+python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
@@ -220,13 +225,13 @@ GitHub ActionsではPython 3.10と3.14で同じテストを実行します。
 A. v0.1.0で修正されました。最新版に更新してください。
 
 **Q. パーセンテージが `--.-%` と表示される**
-A. v0.1.0で修正されました。`total_bytes`と`total_bytes_estimate`の両方をチェックするようになりました。
+A. 総容量が不明な場合に表示されます。進捗の計算には`total_bytes`を使い、不明な場合は`total_bytes_estimate`を使います。
 
 **Q. フォーマット一覧が取得できない**
 A. 通信や動画の制限が原因の場合があります。自動的に最高品質へフォールバックします。
 
 **Q. `yt-dlp` が見つからないと出る**
-A. `brew install yt-dlp ffmpeg` を実行してください。親切なエラーメッセージでインストール方法が表示されます。
+A. `brew install yt-dlp ffmpeg` を実行してください。エラーメッセージにインストール方法が表示されます。
 
 **Q. どのディレクトリからでも実行したい**
 A. pipxでのインストール、またはシェルエイリアス/ラッパースクリプトを設定してください（インストールセクション参照）。
